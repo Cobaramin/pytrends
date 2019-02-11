@@ -2,14 +2,12 @@ from __future__ import absolute_import, print_function, unicode_literals
 
 import json
 import sys
+import time
+from datetime import datetime, timedelta
 
-from pandas.io.json.normalize import nested_to_record
 import pandas as pd
 import requests
-
-from datetime import datetime, timedelta
-import time
-
+from pandas.io.json.normalize import nested_to_record
 from pytrends import exceptions
 
 if sys.version_info[0] == 2:  # Python 2
@@ -30,8 +28,8 @@ class TrendReq(object):
     INTEREST_OVER_TIME_URL = 'https://trends.google.com/trends/api/widgetdata/multiline'
     INTEREST_BY_REGION_URL = 'https://trends.google.com/trends/api/widgetdata/comparedgeo'
     RELATED_QUERIES_URL = 'https://trends.google.com/trends/api/widgetdata/relatedsearches'
-    TRENDING_SEARCHES_URL = 'https://trends.google.com/trends/hottrends/hotItems'
-    TOP_CHARTS_URL = 'https://trends.google.com/trends/topcharts/chart'
+    TRENDING_SEARCHES_URL = 'https://trends.google.com/trends/api/dailytrends'
+    TOP_CHARTS_URL = 'https://trends.google.com/trends/api/topcharts'
     SUGGESTIONS_URL = 'https://trends.google.com/trends/api/autocomplete/'
     CATEGORIES_URL = 'https://trends.google.com/trends/api/explore/pickers/category'
 
@@ -48,8 +46,8 @@ class TrendReq(object):
         self.hl = hl
         self.geo = geo
         self.kw_list = list()
-        self.proxies = proxies #add a proxy option
-        #proxies format: {"http": "http://192.168.0.1:8888" , "https": "https://192.168.0.1:8888"}
+        self.proxies = proxies  # add a proxy option
+        # proxies format: {"http": "http://192.168.0.1:8888" , "https": "https://192.168.0.1:8888"}
         self.cookies = dict(filter(
             lambda i: i[0] == 'NID',
             requests.get(
@@ -192,7 +190,8 @@ class TrendReq(object):
             # make other dataframe from isPartial key data
             # split list columns into seperate ones, remove brackets and split on comma
             df = df.fillna(False)
-            result_df2 = df['isPartial'].apply(lambda x: pd.Series(str(x).replace('[', '').replace(']', '').split(',')))
+            result_df2 = df['isPartial'].apply(lambda x: pd.Series(
+                str(x).replace('[', '').replace(']', '').split(',')))
             result_df2.columns = ['isPartial']
             # concatenate the two dataframes
             final = pd.concat([result_df, result_df2], axis=1)
@@ -211,9 +210,9 @@ class TrendReq(object):
             self.interest_by_region_widget['request']['resolution'] = resolution
         elif self.geo == 'US' and resolution in ['DMA', 'CITY', 'REGION']:
             self.interest_by_region_widget['request']['resolution'] = resolution
-            
+
         self.interest_by_region_widget['request']['includeLowSearchVolumeGeos'] = inc_low_vol
-        
+
         # convert to string as requests will mangle
         region_payload['req'] = json.dumps(self.interest_by_region_widget['request'])
         region_payload['token'] = self.interest_by_region_widget['token']
@@ -236,7 +235,7 @@ class TrendReq(object):
         result_df = df['value'].apply(lambda x: pd.Series(str(x).replace('[', '').replace(']', '').split(',')))
         if inc_geo_code:
             result_df['geoCode'] = df['geoCode']
-            
+
         # rename each column with its search term
         for idx, kw in enumerate(self.kw_list):
             result_df[kw] = result_df[idx].astype('int')
@@ -277,15 +276,15 @@ class TrendReq(object):
                 # in case no top topics are found, the lines above will throw a KeyError
                 df_top = None
 
-            #rising topics
+            # rising topics
             try:
                 rising_list = req_json['default']['rankedList'][1]['rankedKeyword']
-                df_rising = pd.DataFrame([nested_to_record(d, sep='_')  for d in rising_list])
+                df_rising = pd.DataFrame([nested_to_record(d, sep='_') for d in rising_list])
             except KeyError:
                 # in case no rising topics are found, the lines above will throw a KeyError
                 df_rising = None
 
-            result_dict[kw] = {'rising': df_rising, 'top' : df_top}
+            result_dict[kw] = {'rising': df_rising, 'top': df_top}
         return result_dict
 
     def related_queries(self):
@@ -336,12 +335,15 @@ class TrendReq(object):
         """Request data from Google's Trending Searches section and return a dataframe"""
 
         # make the request
-        forms = {'ajax': 1, 'pn': pn, 'htd': '', 'htv': 'l'}
+        # forms = {'ajax': 1, 'pn': pn, 'htd': '', 'htv': 'l'}
+        # forms = {'hl': 1, 'tz': pn, 'ed': '', 'geo': 'l', 'ns': }
+
         req_json = self._get_data(
             url=TrendReq.TRENDING_SEARCHES_URL,
-            method=TrendReq.POST_METHOD,
+            method=TrendReq.GET_METHOD,
             data=forms,
-        )['trendsByDateList']
+        )['default']['trendingSearchesDays']
+        {req_json}
         result_df = pd.DataFrame()
 
         # parse the returned json
@@ -353,20 +355,20 @@ class TrendReq(object):
         result_df = pd.concat([result_df, sub_df])
         return result_df
 
-    def top_charts(self, date, cid, geo='US', cat=''):
+    def top_charts(self, year):
         """Request data from Google's Top Charts section and return a dataframe"""
 
         # create the payload
-        chart_payload = {'ajax': 1, 'lp': 1, 'geo': geo, 'date': date, 'cat': cat, 'cid': cid}
+        chart_payload = {'hl': self.hl, 'tz': self.tz, 'date': year, 'geo': self.geo, 'isMobile': False}
 
         # make the request and parse the returned json
         req_json = self._get_data(
             url=TrendReq.TOP_CHARTS_URL,
-            method=TrendReq.POST_METHOD,
+            method=TrendReq.GET_METHOD,
             params=chart_payload,
-        )['data']['entityList']
-        df = pd.DataFrame(req_json)
-        return df
+            trim_chars=5
+        )['topCharts']
+        return pd.DataFrame({row['listTitle']: row['listItems'] for row in req_json})
 
     def suggestions(self, keyword):
         """Request data from Google's Keyword Suggestion dropdown and return a dictionary"""
@@ -389,14 +391,14 @@ class TrendReq(object):
         params = {'hl': self.hl}
 
         req_json = self._get_data(
-                url=TrendReq.CATEGORIES_URL,
-                params=params,
-                method=TrendReq.GET_METHOD,
-                trim_chars=5
+            url=TrendReq.CATEGORIES_URL,
+            params=params,
+            method=TrendReq.GET_METHOD,
+            trim_chars=5
         )
         return req_json
 
-    def get_historical_interest(self, keywords, year_start=2018, month_start=1, day_start=1, hour_start=0, year_end=2018, month_end=2, day_end=1, hour_end= 0, cat=0, geo='', gprop='', sleep=0):
+    def get_historical_interest(self, keywords, year_start=2018, month_start=1, day_start=1, hour_start=0, year_end=2018, month_end=2, day_end=1, hour_end=0, cat=0, geo='', gprop='', sleep=0):
         """Gets historical hourly data for interest by chunking requests to 1 week at a time (which is what Google allows)"""
 
         # construct datetime obejcts - raises ValueError if invalid parameters
@@ -422,7 +424,7 @@ class TrendReq(object):
             tf = start_date_str + ' ' + date_iterator_str
 
             try:
-                self.build_payload(keywords,cat, tf, geo, gprop)
+                self.build_payload(keywords, cat, tf, geo, gprop)
                 week_df = self.interest_over_time()
                 df = df.append(week_df)
             except Exception as e:
