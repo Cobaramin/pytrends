@@ -20,12 +20,12 @@ pytrend = TrendReq(hl='th', tz=-420, geo='TH')
 # print(related_queries_dict)
 
 # Get Google Hot Trends data
-# trending_searches_df = pytrend.trending_searches()
-# print(trending_searches_df.head())
+trending_searches_df = pytrend.trending_searches()
+print(trending_searches_df.head())
 
 # Get Google Top Charts
-top_charts_df = pytrend.top_charts(year=2018)
-print(top_charts_df.head())
+# top_charts_df = pytrend.top_charts(year=2018)
+# print(top_charts_df.head())
 
 # Get Google Keyword Suggestions
 # suggestions_dict = pytrend.suggestions(keyword='pizza')

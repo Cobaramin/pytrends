@@ -73,7 +73,7 @@ class TrendReq(object):
         :return:
         """
         s = requests.session()
-        s.headers.update({'accept-language': self.hl})
+        # s.headers.update({'accept-language': self.hl})
         if self.proxies != '':
             s.proxies.update(self.proxies)
         if method == TrendReq.POST_METHOD:
@@ -331,29 +331,26 @@ class TrendReq(object):
             result_dict[kw] = {'top': top_df, 'rising': rising_df}
         return result_dict
 
-    def trending_searches(self, pn='p1'):
+    def trending_searches(self):
         """Request data from Google's Trending Searches section and return a dataframe"""
 
         # make the request
-        # forms = {'ajax': 1, 'pn': pn, 'htd': '', 'htv': 'l'}
-        # forms = {'hl': 1, 'tz': pn, 'ed': '', 'geo': 'l', 'ns': }
+        forms = {'hl': self.hl, 'tz': self.tz, 'geo': self.geo, 'ns': 15}
 
         req_json = self._get_data(
             url=TrendReq.TRENDING_SEARCHES_URL,
             method=TrendReq.GET_METHOD,
-            data=forms,
+            params=forms,
+            trim_chars=6
         )['default']['trendingSearchesDays']
-        {req_json}
-        result_df = pd.DataFrame()
 
         # parse the returned json
-        sub_df = pd.DataFrame()
+        result_list = []
         for trenddate in req_json:
-            sub_df['date'] = trenddate['date']
-            for trend in trenddate['trendsList']:
-                sub_df = sub_df.append(trend, ignore_index=True)
-        result_df = pd.concat([result_df, sub_df])
-        return result_df
+            for trend in trenddate['trendingSearches']:
+                for related_trend in trend['relatedQueries']:
+                    result_list.append({'date': trenddate['date'], 'trend': trend['title']['query'], 'related_trend': related_trend['query']})
+        return pd.DataFrame(result_list)
 
     def top_charts(self, year):
         """Request data from Google's Top Charts section and return a dataframe"""
